@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using ColossalFramework;
 using UnityEngine;
+using ColossalFramework.Math;
+using Elektrix.Tools.Extensions;
 
 namespace ResolveOverlaps
 {
@@ -73,6 +75,48 @@ namespace ResolveOverlaps
 				result = this.ThrowError("Invalid segment detected.");
 			}
 			return result;
+		}
+		
+				// Token: 0x06000023 RID: 35 RVA: 0x00002A64 File Offset: 0x00000C64
+		public bool NodeInsertion(ushort segmentID, float cut)
+		{
+			Bezier3 bezier = default(Bezier3);
+			NetSegment segment = this.GetSegment(segmentID);
+			bezier.a = Singleton<NetManager>.instance.m_nodes.m_buffer[(int)segment.m_startNode].m_position;
+			bezier.d = Singleton<NetManager>.instance.m_nodes.m_buffer[(int)segment.m_endNode].m_position;
+			bool smoothStart = (Singleton<NetManager>.instance.m_nodes.m_buffer[(int)segment.m_startNode].m_flags & NetNode.Flags.Middle) > NetNode.Flags.None;
+			bool smoothEnd = (Singleton<NetManager>.instance.m_nodes.m_buffer[(int)segment.m_endNode].m_flags & NetNode.Flags.Middle) > NetNode.Flags.None;
+			Vector3 b;
+			Vector3 c;
+			NetSegment.CalculateMiddlePoints(bezier.a, segment.m_startDirection, bezier.d, segment.m_endDirection, smoothStart, smoothEnd, out b, out c);
+			bezier.b = b;
+			bezier.c = c;
+			Vector3 position = bezier.Position(cut);
+			ushort startNode = segment.m_startNode;
+			Vector3 startDirection = segment.m_startDirection;
+			Vector3 endDirection = -bezier.Tangent(cut).normalized;
+			ushort endNode = segment.m_endNode;
+			Vector3 endDirection2 = segment.m_endDirection;
+			Vector3 normalized = bezier.Tangent(cut).normalized;
+			ushort num;
+			this.Manager.CreateNode(out num, ref Singleton<SimulationManager>.instance.m_randomizer, segment.Info, position, Singleton<SimulationManager>.instance.m_currentBuildIndex);
+			Singleton<SimulationManager>.instance.m_currentBuildIndex += 1u;
+			bool invert = (segmentID.ToSegment().m_flags & NetSegment.Flags.Invert) > NetSegment.Flags.None;
+			ushort num2;
+			this.Manager.CreateSegment(out num2, ref Singleton<SimulationManager>.instance.m_randomizer, segment.Info, startNode, num, startDirection, endDirection, Singleton<SimulationManager>.instance.m_currentBuildIndex, Singleton<SimulationManager>.instance.m_currentBuildIndex, invert);
+			Singleton<SimulationManager>.instance.m_currentBuildIndex += 1u;
+			ushort num3;
+			this.Manager.CreateSegment(out num3, ref Singleton<SimulationManager>.instance.m_randomizer, segment.Info, num, endNode, normalized, endDirection2, Singleton<SimulationManager>.instance.m_currentBuildIndex, Singleton<SimulationManager>.instance.m_currentBuildIndex, invert);
+			Singleton<SimulationManager>.instance.m_currentBuildIndex += 1u;
+			this.Manager.UpdateNode(num);
+			this.Manager.UpdateSegment(num2);
+			this.Manager.UpdateSegment(num3);
+			this.NetworkSkinsFixNewPrefab(segmentID, num2, segment.Info);
+			this.NetworkSkinsFixNewPrefab(segmentID, num3, segment.Info);
+			this.Manager.ReleaseSegment(segmentID, true);
+			this.m_newSeg1 = num2;
+			this.m_newSeg2 = num3;
+			return true;
 		}
 	}
 }
